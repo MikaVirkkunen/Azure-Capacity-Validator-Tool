@@ -1,0 +1,10 @@
+fastapi==0.112.0
+uvicorn[standard]==0.30.5
+pydantic==2.8.2
+
+azure-identity==1.17.1
+azure-mgmt-subscription==3.1.1
+azure-mgmt-compute==31.0.0
+
+openai==1.43.0
+python-dotenv==1.0.1
