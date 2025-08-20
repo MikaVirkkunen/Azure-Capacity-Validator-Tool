@@ -1,16 +1,52 @@
-# Azure-Capacity-Validator-Tool
-This tool validates if selected Azure Region can support planned application architecture
+# Azure Capacity Validator (Local MVP)
 
-## Idea
-User is planning to deploy or migrate application into Azure region but it's hard to validate if selected services, sku's and features are available in selected region. By using this tool user can select region, SLA needs, Availability Zone needs, Services, SKU's and all the other details and too validates if that combination is possible.
+Validates whether a selected Azure region can support a planned architecture, using live Azure APIs and a modern local UX.
 
-## Technical idea
-* MCP server to Azure
-* MCP server to Microsoft Learn Documentation
-* Agents that can use internet and MCP tools to get right information
-* Agents authenticate to user Azure with Read only permissions to read user specific Azure data like what's available for EA or CSP customers vs. PAYG users.
-* Agents create initial plan for the project so that GitHub Copilot Coding Agent can work better
-* Agents create a general baseline plan to capture all needed information
-* When tool is run agents generate modified plan that matches that user session.
-* Data needs to be read from Microsoft API's or documentation so that it's valid in that moment and there's no hallusination
-* Tool needs to have nice modern UI where user can select Azure Services, sku's and other things that they need. This needs to be read from some Microsoft API or source so that it's valid every time user starts the session.
+- Live validation against Microsoft APIs (no hallucinations)
+- Runs locally (FastAPI + React)
+- Uses Azure AD (DefaultAzureCredential) by default
+- Azure OpenAI (GPT-4.1) can generate an initial plan JSON which is then validated
+
+## Quickstart
+
+1) Backend
+
+```bash
+cd backend
+python -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+
+# Required (AAD by default; key optional)
+export AVATAR_AZURE_OPENAI_DEPLOYMENT=gpt-4.1
+export AVATAR_AZURE_OPENAI_ENDPOINT=https://<your-aoai>.openai.azure.com/
+# Optional: export AVATAR_AZURE_OPENAI_KEY=...
+
+# Optional: export AZURE_SUBSCRIPTION_ID=<subId>
+az login
+uvicorn app.main:app --reload --port 8000
+```
+
+2) Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open http://localhost:5173
+
+## What you can do
+
+- Pick subscription and region
+- Browse VM sizes available in the chosen region
+- Add VM and Disk resources to a plan
+- Validate availability per region and subscription
+- Use AI to draft a plan from a natural language description
+
+## Agent/MCP
+
+Not required for this MVP. If you want agent workflows next (as in the original vision), we can:
+- Wrap the Azure SDK calls as MCP tools
+- Add a Microsoft Learn MCP to fetch official docs and return canonical references alongside validations
