@@ -47,9 +47,11 @@ def generate_initial_plan(prompt: str) -> Dict[str, Any]:
         "Schema: {\"region\": \"<azure-region>\", \"resources\": [{\"resource_type\": \"<RP/type>\", \"sku\": \"<sku-or-size>\", \"features\": {}, \"quantity\": <int>}]}"
     )
     user = (
-        "Create a minimal plan based on the user's description. Only include resources that can be validated with Microsoft.Compute today: "
-        "Microsoft.Compute/virtualMachines (use VM sizes like Standard_D4s_v5), Microsoft.Compute/disks (use SKUs like Premium_LRS, StandardSSD_LRS). "
-        "You may include quantity. Do not invent regions; if not provided, propose 'westeurope'.\n\n"
+        "Create a minimal plan based on the user's description. Include any relevant Azure resource types, not just compute. "
+        "Examples: Microsoft.Compute/virtualMachines, Microsoft.Compute/disks, Microsoft.Storage/storageAccounts, Microsoft.Network/publicIPAddresses, "
+        "Microsoft.KeyVault/vaults, Microsoft.CognitiveServices/accounts, Microsoft.Web/sites. "
+        "Prefer realistic SKUs when mentioned; otherwise leave sku empty for non-compute. "
+        "Do not invent regions; if not provided, use 'westeurope'.\n\n"
         f"User input:\n{prompt}"
     )
 

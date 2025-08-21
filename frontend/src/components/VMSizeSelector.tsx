@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { FormControl, InputLabel, Select, MenuItem } from '@mui/material'
 
 type Props = {
   region: string
@@ -22,13 +23,16 @@ export default function VMSizeSelector({ region, subscriptionId, value, onChange
   }, [region, subscriptionId])
 
   return (
-    <select value={value || ''} onChange={e => onChange(e.target.value)}>
-      <option value="">Select VM size</option>
-      {sizes.map(s => (
-        <option key={s.name} value={s.name}>
-          {s.name} ({Math.round(s.memory_in_mb/1024)} GB, {s.number_of_cores} vCPU)
-        </option>
-      ))}
-    </select>
+    <FormControl sx={{ minWidth: 260 }} size="small">
+      <InputLabel id="vm-size-label">VM Size</InputLabel>
+      <Select labelId="vm-size-label" label="VM Size" value={value || ''} onChange={(e) => onChange(String(e.target.value))}>
+        <MenuItem value=""><em>Select VM size</em></MenuItem>
+        {sizes.map((s) => (
+          <MenuItem key={s.name} value={s.name}>
+            {s.name} ({Math.round(s.memory_in_mb/1024)} GB, {s.number_of_cores} vCPU)
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
   )
 }

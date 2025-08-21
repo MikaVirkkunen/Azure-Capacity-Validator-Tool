@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { FormControl, InputLabel, Select, MenuItem } from '@mui/material'
 
 type Props = {
   subscriptionId?: string
@@ -19,13 +20,20 @@ export default function RegionSelector({ subscriptionId, value, onChange }: Prop
   }, [subscriptionId])
 
   return (
-    <section style={{ marginBottom: 16 }}>
-      <label>Region:&nbsp;</label>
-      <select value={value} onChange={e => onChange(e.target.value)}>
-        {regions.map(r => (
-          <option key={r.name} value={r.name}>{r.display_name || r.name}</option>
+    <FormControl fullWidth>
+      <InputLabel id="region-label">Region</InputLabel>
+      <Select
+        labelId="region-label"
+        label="Region"
+        value={value}
+        onChange={(e) => onChange(String(e.target.value))}
+      >
+        {regions.map((r) => (
+          <MenuItem key={r.name} value={r.name}>
+            {r.display_name || r.name}
+          </MenuItem>
         ))}
-      </select>
-    </section>
+      </Select>
+    </FormControl>
   )
 }

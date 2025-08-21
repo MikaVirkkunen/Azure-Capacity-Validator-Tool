@@ -3,6 +3,7 @@ import RegionSelector from './components/RegionSelector'
 import VMSizeSelector from './components/VMSizeSelector'
 import PlanEditor from './components/PlanEditor'
 import ValidationResults from './components/ValidationResults'
+import { Box, Container, Typography, Paper, TextField, Button, MenuItem, Select, FormControl, InputLabel, Stack, Alert } from '@mui/material'
 
 type Subscription = { subscription_id: string, display_name?: string }
 
@@ -13,6 +14,8 @@ export default function App() {
   const [plan, setPlan] = useState<any>({ region: 'westeurope', resources: [] })
   const [results, setResults] = useState<any>(null)
   const [aiPrompt, setAiPrompt] = useState<string>('')
+  const [aiLoading, setAiLoading] = useState<boolean>(false)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/subscriptions').then(r => r.json()).then(setSubs).catch(console.error)
@@ -30,56 +33,85 @@ export default function App() {
   }
 
   const runAI = async () => {
-    const res = await fetch('/api/ai/plan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: aiPrompt })
-    })
-    const data = await res.json()
-    // normalize into editor format
-    setRegion(data.region || 'westeurope')
-    setPlan({ region: data.region || 'westeurope', resources: data.resources || [] })
+    setAiError(null)
+    setAiLoading(true)
+    try {
+      const res = await fetch('/api/ai/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: aiPrompt })
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const detail = (data && (data.detail || data.message)) || `HTTP ${res.status}`
+        setAiError(`AI plan generation failed: ${detail}. Configure Azure OpenAI in backend env vars.`)
+        return
+      }
+      // normalize into editor format
+      setRegion(data.region || 'westeurope')
+      setPlan({ region: data.region || 'westeurope', resources: data.resources || [] })
+    } catch (e: any) {
+      setAiError(e?.message || 'Unexpected error calling AI plan API')
+    } finally {
+      setAiLoading(false)
+    }
   }
 
   return (
-    <div style={{ padding: 24, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial' }}>
-      <h1>Azure Capacity Validator</h1>
+    <Container maxWidth="lg" sx={{ py: 3 }}>
+      <Typography variant="h4" fontWeight={700} gutterBottom>Azure Capacity Validator</Typography>
 
-      <section style={{ marginBottom: 16 }}>
-        <label>Subscription:&nbsp;</label>
-        <select value={subscriptionId || ''} onChange={e => setSubscriptionId(e.target.value || undefined)}>
-          <option value=''>Default</option>
-          {subs.map(s => (
-            <option key={s.subscription_id} value={s.subscription_id}>
-              {s.display_name || s.subscription_id}
-            </option>
-          ))}
-        </select>
-      </section>
+      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+          <FormControl sx={{ minWidth: 280 }}>
+            <InputLabel id="sub-label">Subscription</InputLabel>
+            <Select labelId="sub-label" label="Subscription" value={subscriptionId || ''} onChange={(e) => setSubscriptionId(String(e.target.value) || undefined)}>
+              <MenuItem value="">Default</MenuItem>
+              {subs.map(s => (
+                <MenuItem key={s.subscription_id} value={s.subscription_id}>
+                  {s.display_name || s.subscription_id}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
-      <RegionSelector subscriptionId={subscriptionId} value={region} onChange={setRegion} />
+          <Box flex={1}>
+            <RegionSelector subscriptionId={subscriptionId} value={region} onChange={setRegion} />
+          </Box>
+        </Stack>
+      </Paper>
 
-      <section style={{ margin: '16px 0', padding: 12, border: '1px solid #ddd', borderRadius: 8 }}>
-        <h3>AI Plan Generator</h3>
-        <textarea
+      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Typography variant="h6" gutterBottom>AI Plan Generator</Typography>
+        <TextField
           value={aiPrompt}
           onChange={(e) => setAiPrompt(e.target.value)}
-          rows={4}
-          style={{ width: '100%' }}
-          placeholder="Describe your architecture (e.g., 3 VM Standard_D4s_v5 and Premium_LRS disks)..."
+          multiline minRows={3}
+          fullWidth
+          placeholder="Describe your architecture (e.g., 3x Standard_D4s_v5 VMs, Premium_LRS disks, Key Vault, Public IP)."
         />
-        <div style={{ marginTop: 8 }}>
-          <button onClick={runAI}>Generate Plan with Azure OpenAI</button>
-        </div>
-      </section>
+        <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+          <Button variant="contained" onClick={runAI} disabled={aiLoading}>
+            {aiLoading ? 'Generating…' : 'Generate Plan with Azure OpenAI'}
+          </Button>
+        </Stack>
+        {aiError && (
+          <Alert severity="error" sx={{ mt: 1 }}>{aiError}</Alert>
+        )}
+      </Paper>
 
-      <PlanEditor plan={plan} setPlan={setPlan} region={region} subscriptionId={subscriptionId} />
+      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <PlanEditor plan={plan} setPlan={setPlan} region={region} subscriptionId={subscriptionId} />
+        <Stack direction="row" sx={{ mt: 2 }}>
+          <Button variant="contained" onClick={runValidation}>Validate Plan</Button>
+        </Stack>
+      </Paper>
 
-      <div style={{ marginTop: 16 }}>
-        <button onClick={runValidation}>Validate Plan</button>
-      </div>
-
-      {results && <ValidationResults results={results} />}
-    </div>
+      {results && (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <ValidationResults results={results} />
+        </Paper>
+      )}
+    </Container>
   )
 }
