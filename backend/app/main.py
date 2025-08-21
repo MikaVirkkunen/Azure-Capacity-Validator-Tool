@@ -7,8 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from .azure_client import list_subscriptions, list_locations, list_vm_sizes, list_compute_resource_skus, get_default_subscription_id, is_resource_available, is_azure_openai_available
 from .models import Plan, ValidationResponse, ValidationResultItem, PlanResource
 from .ai_agent import generate_initial_plan
-from .ai_agent import _get_azure_openai_client  # reuse configured Azure OpenAI client if available
-from .azure_client import get_cognitive_account_region_for_endpoint
 
 app = FastAPI(title="Azure Capacity Validator Tool", version="0.1.1")
 
@@ -83,17 +81,23 @@ def _validate_vm(resource: PlanResource, region: str, subscription_id: str | Non
 
     # Optional capability checks using resource SKUs
     skus = list_compute_resource_skus(region, subscription_id)
-    matching = [s for s in skus if s["resource_type"] == "virtualMachines" and (s["name"] == size or s["size"] == size)]
+    matching = [s for s in skus if s["resource_type"].lower() == "virtualmachines" and (s.get("name") == size or s.get("size") == size)]
     details = "Available."
-    # Enrich details with physical availability (zones) if present
+    # Enrich details with physical availability (zones) if present. Aggregate across all matching entries for this region.
     if matching:
-        m = matching[0]
-        zones = m.get("zones") or []
-        tier = m.get("tier")
-        family = m.get("family")
+        zones_set = set()
+        tier = None
+        family = None
+        for m in matching:
+            for z in (m.get("zones") or []):
+                zones_set.add(str(z))
+            # Prefer the first non-empty tier/family
+            tier = tier or m.get("tier")
+            family = family or m.get("family")
         extras = []
-        if zones:
-            extras.append(f"Zones: {', '.join(zones)}")
+        if zones_set:
+            details_zones = ", ".join(sorted(zones_set))
+            extras.append(f"Zones: {details_zones}")
         if tier:
             extras.append(f"Tier: {tier}")
         if family:
@@ -151,52 +155,20 @@ def _validate_cognitive_account(resource: PlanResource, region: str, subscriptio
         model_name = resource.sku
 
     if not model_name:
-        # If we have a configured AOAI endpoint, also verify the endpoint's account region matches plan.region.
-        try:
-            client = _get_azure_openai_client()
-            endpoint = getattr(client, "azure_endpoint", None) or getattr(client, "_client", None)
-            endpoint = getattr(client, "azure_endpoint", None)
-            acct_region = get_cognitive_account_region_for_endpoint(endpoint or "", subscription_id)
-            if acct_region and acct_region != region.lower():
-                return ValidationResultItem(resource=resource, status="unknown", details=f"AOAI endpoint is in {acct_region}, plan region is {region}. Service available check passed, but endpoint/region differ.")
-        except Exception:
-            pass
-
         detail = "Azure OpenAI available in region. No model specified." if aoai_avail else f"AOAI availability indeterminate. {aoai.get('details','')}"
         return ValidationResultItem(resource=resource, status="available", details=detail)
 
-    # Attempt to query configured Azure OpenAI account for deployed/available models
-    try:
-        client = _get_azure_openai_client()
-    except Exception as e:
-        return ValidationResultItem(
-            resource=resource,
-            status="unknown",
-            details=f"Provider available. Model '{model_name}' not verified: Azure OpenAI not configured ({e})."
+    # No endpoint checks: this tool is region-scoped and subscription-agnostic for AOAI model availability.
+    # Azure does not provide a public management API to enumerate model availability per region without an account context.
+    # Therefore, report neutral status for specific models.
+    return ValidationResultItem(
+        resource=resource,
+        status="unknown" if aoai_avail else "unavailable",
+        details=(
+            f"Azure OpenAI is available in {region}, but model-level availability for '{model_name}' cannot be programmatically verified without an endpoint."
+            if aoai_avail else f"AOAI availability indeterminate. {aoai.get('details','')}"
         )
-
-    try:
-        # List models (deployments) visible to this AOAI endpoint
-        models = list(client.models.list())  # base models and/or deployments depending on SDK and permissions
-        ids = set()
-        for m in models:
-            mid = getattr(m, "id", None) or getattr(m, "model", None)
-            if mid:
-                ids.add(str(mid))
-        ids = {i for i in ids if i}
-        # Require exact match on short name (case-insensitive). Handled both deployment IDs and base models.
-        target = model_name.strip().lower()
-        def short(x: str) -> str:
-            # normalize deployment/model id to short model name when possible
-            base = x.split(":")[0]
-            return base.split("/")[-1].lower()
-        found = any(short(mid) == target for mid in ids)
-        if found:
-            return ValidationResultItem(resource=resource, status="available", details=f"Model '{model_name}' found on configured Azure OpenAI.")
-        else:
-            return ValidationResultItem(resource=resource, status="unavailable", details=f"Model '{model_name}' not found on configured Azure OpenAI endpoint. Ensure it's available in this region and deployed.")
-    except Exception as e:
-        return ValidationResultItem(resource=resource, status="unknown", details=f"Error checking models: {e}")
+    )
 
 
 @app.post("/api/validate-plan", response_model=ValidationResponse)

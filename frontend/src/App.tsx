@@ -47,9 +47,10 @@ export default function App() {
         setAiError(`AI plan generation failed: ${detail}. Configure Azure OpenAI in backend env vars.`)
         return
       }
-      // normalize into editor format
-      setRegion(data.region || 'westeurope')
-      setPlan({ region: data.region || 'westeurope', resources: data.resources || [] })
+  // Normalize into editor format. Do not override the user's selected region.
+  // Keep the currently selected region and only adopt AI region if it is explicitly provided
+  // AND the current region is empty (not the case in this UI).
+  setPlan({ region, resources: data.resources || [] })
     } catch (e: any) {
       setAiError(e?.message || 'Unexpected error calling AI plan API')
     } finally {
