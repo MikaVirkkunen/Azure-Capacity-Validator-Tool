@@ -6,8 +6,9 @@ from azure.identity import DefaultAzureCredential
 from azure.mgmt.subscription import SubscriptionClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
-from azure.mgmt.resource.resources.models import Provider
 from azure.mgmt.cognitiveservices import CognitiveServicesManagementClient
+
+from .cache import ttl_cache
 
 
 def get_default_credential() -> DefaultAzureCredential:
@@ -23,9 +24,11 @@ def get_subscription_client(credential: Optional[DefaultAzureCredential] = None)
     return SubscriptionClient(cred)
 
 
+@ttl_cache(ttl_seconds=300)
 def list_subscriptions() -> List[Dict[str, Any]]:
+    """Cache subscription enumeration for 5 minutes to avoid repeated ARM calls."""
     client = get_subscription_client()
-    subs = []
+    subs: List[Dict[str, Any]] = []
     for s in client.subscriptions.list():
         subs.append({
             "subscription_id": s.subscription_id,
@@ -46,11 +49,11 @@ def get_default_subscription_id() -> Optional[str]:
     return subs[0]["subscription_id"] if subs else None
 
 
+@ttl_cache(ttl_seconds=900)
 def list_locations(subscription_id: Optional[str] = None) -> List[Dict[str, Any]]:
     sub_id = subscription_id or get_default_subscription_id()
     if not sub_id:
         return []
-
     client = get_subscription_client()
     result = client.subscriptions.list_locations(sub_id)
     return [
@@ -152,14 +155,7 @@ def is_resource_type_available(resource_type: str, location: Optional[str] = Non
     }
 
 
-def get_resource_client(subscription_id: Optional[str] = None) -> ResourceManagementClient:
-    sub_id = subscription_id or get_default_subscription_id()
-    if not sub_id:
-        raise RuntimeError("No Azure subscription available. Login with 'az login' or set AZURE_SUBSCRIPTION_ID.")
-    cred = get_default_credential()
-    return ResourceManagementClient(cred, sub_id)
-
-
+@ttl_cache(ttl_seconds=900)
 def list_provider_resource_types(provider_namespace: str, subscription_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """Return provider resource types and their supported locations for a given provider namespace."""
     client = get_resource_client(subscription_id)
@@ -179,6 +175,7 @@ def _normalize_location(s: str) -> str:
     return ''.join(ch for ch in s.lower() if ch.isalnum())
 
 
+@ttl_cache(ttl_seconds=600)
 def is_resource_available(resource_type_fqn: str, location: Optional[str] = None, subscription_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Generic availability check for any Azure resource type using the Providers API.
@@ -231,6 +228,7 @@ def is_resource_available(resource_type_fqn: str, location: Optional[str] = None
     return {"available": available, "reason": "", "provider": provider, "type": rt, "locations": locs}
 
 
+@ttl_cache(ttl_seconds=600)
 def list_vm_sizes(location: str, subscription_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """List VM sizes available in a region."""
     compute = get_compute_client(subscription_id)
@@ -248,6 +246,7 @@ def list_vm_sizes(location: str, subscription_id: Optional[str] = None) -> List[
     ]
 
 
+@ttl_cache(ttl_seconds=600)
 def list_compute_resource_skus(location: Optional[str] = None, subscription_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """List Microsoft.Compute resource SKUs (VMs, Disks, etc.), optionally filtering by location."""
     compute = get_compute_client(subscription_id)
@@ -313,6 +312,7 @@ def list_compute_resource_skus(location: Optional[str] = None, subscription_id: 
     return result
 
 
+@ttl_cache(ttl_seconds=900)
 def is_azure_openai_available(location: str, subscription_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Check if Azure OpenAI (kind=OpenAI) is available in a given region for the subscription.

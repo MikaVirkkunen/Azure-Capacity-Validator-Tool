@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import VMSizeSelector from './VMSizeSelector'
+import GenericSkuSelector from './GenericSkuSelector'
 import { Box, Stack, Typography, Select, MenuItem, TextField, Button, IconButton, Paper, InputLabel, FormControl } from '@mui/material'
 import DeleteIcon from '@mui/icons-material/Delete'
 
@@ -55,11 +56,13 @@ export default function PlanEditor({ plan, setPlan, region, subscriptionId }: Pr
             if (v.toLowerCase() === 'microsoft.keyvault/vaults') setNewSku('standard')
             else if (v.toLowerCase() === 'microsoft.compute/virtualmachines') setNewSku('')
             else if (v.toLowerCase() === 'microsoft.compute/disks') setNewSku('Premium_LRS')
+            else if (v.toLowerCase() === 'microsoft.cognitiveservices/accounts') setNewSku('S0')
             else setNewSku('')
           }}>
             <MenuItem value="Microsoft.Compute/virtualMachines">Microsoft.Compute/virtualMachines</MenuItem>
             <MenuItem value="Microsoft.Compute/disks">Microsoft.Compute/disks</MenuItem>
             <MenuItem value="Microsoft.KeyVault/vaults">Microsoft.KeyVault/vaults</MenuItem>
+            <MenuItem value="Microsoft.CognitiveServices/accounts">Microsoft.CognitiveServices/accounts</MenuItem>
             <MenuItem value="custom">Custom (enter RP/type)</MenuItem>
           </Select>
         </FormControl>
@@ -74,19 +77,15 @@ export default function PlanEditor({ plan, setPlan, region, subscriptionId }: Pr
           />
         )}
 
-        {newType.toLowerCase() === 'microsoft.compute/virtualmachines' ? (
+        {newType.toLowerCase() === 'microsoft.compute/virtualmachines' && (
           <VMSizeSelector region={region} subscriptionId={subscriptionId} value={newSku} onChange={setNewSku} />
-        ) : newType.toLowerCase() === 'microsoft.keyvault/vaults' ? (
-          <FormControl sx={{ minWidth: 200 }} size="small">
-            <InputLabel id="kv-sku-label">Key Vault SKU</InputLabel>
-            <Select labelId="kv-sku-label" label="Key Vault SKU" value={newSku} onChange={(e) => setNewSku(String(e.target.value))}>
-              <MenuItem value="standard">Standard</MenuItem>
-              <MenuItem value="premium">Premium</MenuItem>
-            </Select>
-          </FormControl>
-        ) : (
+        )}
+        {['microsoft.compute/disks','microsoft.keyvault/vaults','microsoft.cognitiveservices/accounts'].includes(newType.toLowerCase()) && (
+          <GenericSkuSelector resourceType={newType} region={region} subscriptionId={subscriptionId} value={newSku} onChange={setNewSku} />
+        )}
+        {newType === 'custom' && (
           <TextField
-            placeholder={newType === 'custom' ? 'Optional SKU' : 'Disk SKU (e.g., Premium_LRS)'}
+            placeholder='Optional SKU'
             value={newSku}
             onChange={(e) => setNewSku(e.target.value)}
             label="SKU/Size"
@@ -104,17 +103,13 @@ export default function PlanEditor({ plan, setPlan, region, subscriptionId }: Pr
             <Typography><b>Type:</b> {r.resource_type}</Typography>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" sx={{ mt: 1 }}>
               <Typography variant="body2" sx={{ minWidth: 72 }}>SKU/Size</Typography>
-              {r.resource_type.toLowerCase() === 'microsoft.compute/virtualmachines' ? (
+              {r.resource_type.toLowerCase() === 'microsoft.compute/virtualmachines' && (
                 <VMSizeSelector region={region} subscriptionId={subscriptionId} value={r.sku} onChange={(v) => updateResource(idx, { sku: v })} />
-              ) : r.resource_type.toLowerCase() === 'microsoft.keyvault/vaults' ? (
-                <FormControl sx={{ minWidth: 200 }} size="small">
-                  <InputLabel id={`kv-sku-${idx}`}>Key Vault SKU</InputLabel>
-                  <Select labelId={`kv-sku-${idx}`} label="Key Vault SKU" value={(r.sku || 'standard').toLowerCase()} onChange={(e) => updateResource(idx, { sku: String(e.target.value) })}>
-                    <MenuItem value="standard">Standard</MenuItem>
-                    <MenuItem value="premium">Premium</MenuItem>
-                  </Select>
-                </FormControl>
-              ) : (
+              )}
+              {['microsoft.compute/disks','microsoft.keyvault/vaults','microsoft.cognitiveservices/accounts'].includes(r.resource_type.toLowerCase()) && (
+                <GenericSkuSelector resourceType={r.resource_type} region={region} subscriptionId={subscriptionId} value={r.sku} onChange={(v) => updateResource(idx, { sku: v })} />
+              )}
+              {!( ['microsoft.compute/virtualmachines','microsoft.compute/disks','microsoft.keyvault/vaults','microsoft.cognitiveservices/accounts'].includes(r.resource_type.toLowerCase())) && (
                 <TextField value={r.sku || ''} onChange={(e) => updateResource(idx, { sku: e.target.value })} size="small" />
               )}
               <Typography variant="body2" sx={{ minWidth: 48 }}>Qty</Typography>

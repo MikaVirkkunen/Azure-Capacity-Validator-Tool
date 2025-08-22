@@ -1,5 +1,12 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from pydantic import BaseModel, Field
+from enum import Enum
+
+
+class ValidationStatus(str, Enum):
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    UNKNOWN = "unknown"
 
 
 class PlanResource(BaseModel):
@@ -18,7 +25,7 @@ class Plan(BaseModel):
 
 class ValidationResultItem(BaseModel):
     resource: PlanResource
-    status: str  # "available" | "unavailable" | "unknown"
+    status: ValidationStatus
     details: Optional[str] = None
     references: Optional[List[str]] = None
 
