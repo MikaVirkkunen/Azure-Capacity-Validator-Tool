@@ -1,5 +1,5 @@
 import React from 'react'
-import { Typography, Chip, Stack, Divider } from '@mui/material'
+import { Typography, Chip, Stack, Divider, Table, TableHead, TableRow, TableCell, TableBody, Box } from '@mui/material'
 
 type Props = {
   results: any
@@ -35,6 +35,69 @@ export default function ValidationResults({ results }: Props) {
                 <Chip key={i} label={`${m.logicalZone} ➜ ${m.physicalZone}`} size="small" />
               ))}
             </Stack>
+        </>
+      )}
+      {!results.zone_mapping?.length && results.zone_mapping_status && (
+        <>
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="subtitle1" gutterBottom>Zone Mapping (Logical ➜ Physical)</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {results.zone_mapping_status === 'unavailable' ? 'No logical → physical zone mapping published for this region or insufficient permissions.' : results.zone_mapping_status}
+          </Typography>
+        </>
+      )}
+      {Array.isArray(results.quota_summary) && results.quota_summary.length > 0 && (
+        <>
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="subtitle1" gutterBottom>Quota Summary (Compute – Plan Impact)</Typography>
+          <Box sx={{ overflowX: 'auto' }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Name</TableCell>
+                  <TableCell align="right">Current</TableCell>
+                  <TableCell align="right">Limit</TableCell>
+                  <TableCell align="right">Remaining</TableCell>
+                  <TableCell align="right">Planned Add</TableCell>
+                  <TableCell align="right">Post-Plan Remaining</TableCell>
+                  <TableCell align="right">Used %</TableCell>
+                  <TableCell align="right">Used % After</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {results.quota_summary.map((q: any, i: number) => {
+                  const pct = q.percent_used ?? null
+          const postPct = q.percent_used_after_request ?? null
+          const warn = (postPct !== null ? postPct : pct) !== null && ((postPct ?? pct) >= 80)
+                  return (
+                    <TableRow key={i} sx={warn ? { bgcolor: 'warning.light' } : undefined}>
+                      <TableCell sx={{ minWidth: 220 }}>{q.name}</TableCell>
+                      <TableCell align="right">{q.current}</TableCell>
+                      <TableCell align="right">{q.limit}</TableCell>
+                      <TableCell align="right">{q.remaining}</TableCell>
+            <TableCell align="right">{q.requested_additional ?? 0}</TableCell>
+            <TableCell align="right">{q.remaining_after_request ?? ''}</TableCell>
+            <TableCell align="right">{pct !== null ? `${pct}%` : ''}</TableCell>
+            <TableCell align="right">{postPct !== null ? `${postPct}%` : ''}</TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+      Highlighted rows indicate projected utilization &gt;=80%; consider requesting increases before scaling.
+          </Typography>
+        </>
+      )}
+      {(!results.quota_summary || results.quota_summary.length === 0) && results.quota_status && (
+        <>
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="subtitle1" gutterBottom>Quota Summary (Compute)</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {results.quota_status === 'empty' && 'No quotas with limits found to display.'}
+            {results.quota_status === 'unavailable' && 'Quota data unavailable (permission, region, or API error).'}
+          </Typography>
         </>
       )}
     </div>

@@ -357,6 +357,32 @@ def list_compute_resource_skus(location: Optional[str] = None, subscription_id: 
     return result
 
 
+@ttl_cache(ttl_seconds=300)
+def get_compute_usages(location: str, subscription_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Return compute usage (quotas) for a region.
+
+    Each item: { name: str, current_value: int, limit: int, unit: str }
+    """
+    client = get_compute_client(subscription_id)
+    try:
+        usages = client.usage.list(location)
+    except Exception:
+        return []
+    out: List[Dict[str, Any]] = []
+    for u in usages:
+        name = None
+        if getattr(u, 'name', None):
+            # name is a LocalizableString
+            name = getattr(u.name, 'value', None) or getattr(u.name, 'localized_value', None)
+        out.append({
+            "name": name,
+            "current_value": getattr(u, 'current_value', None),
+            "limit": getattr(u, 'limit', None),
+            "unit": getattr(u, 'unit', None)
+        })
+    return out
+
+
 @ttl_cache(ttl_seconds=900)
 def is_azure_openai_available(location: str, subscription_id: Optional[str] = None) -> Dict[str, Any]:
     """

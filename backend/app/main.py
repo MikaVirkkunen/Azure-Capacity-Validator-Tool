@@ -13,6 +13,7 @@ from .azure_client import (
     is_resource_available,
     is_azure_openai_available,
     get_zone_mappings_for_location,
+    get_compute_usages,
 )
 from .cache import clear_all_cache
 import re
@@ -143,6 +144,29 @@ def api_cache_clear():
     """Clear all in-memory caches (useful for testing or forcing fresh Azure metadata)."""
     clear_all_cache()
     return {"status": "cleared"}
+
+
+@app.get("/api/compute/quotas")
+def api_compute_quotas(location: str, subscription_id: str | None = None):
+    if not location:
+        raise HTTPException(400, "location is required")
+    usages = get_compute_usages(location, subscription_id)
+    # augment with remaining & percent
+    enriched = []
+    for u in usages:
+        cur = u.get("current_value") or 0
+        lim = u.get("limit") or 0
+        remaining = lim - cur if (isinstance(lim, (int, float)) and isinstance(cur, (int, float))) else None
+        pct = (cur / lim * 100.0) if lim not in (0, None) else None
+        enriched.append({
+            "name": u.get("name"),
+            "current": cur,
+            "limit": lim,
+            "remaining": remaining,
+            "percent_used": round(pct, 2) if pct is not None else None,
+            "unit": u.get("unit")
+        })
+    return {"location": location, "quotas": enriched}
 
 
 @app.get("/api/resource-skus")
@@ -482,4 +506,70 @@ def api_validate_plan(plan: Plan):
             pz = m.get('physicalZone') or m.get('physicalzone')
             if lz is not None and pz:
                 zone_mapping.append({'logicalZone': lz, 'physicalZone': pz})
-    return ValidationResponse(region=plan.region, subscription_id=subscription_id, results=results, zone_mapping=zone_mapping)
+    zone_mapping_status = 'present' if zone_mapping else 'unavailable'
+    # Compute quota summary (focus on commonly relevant ones; filter out None limits)
+    usages = get_compute_usages(plan.region, subscription_id)
+    # Determine VM sizes in plan and their core counts / families
+    vm_resources = [r for r in plan.resources if r.resource_type.lower() == "microsoft.compute/virtualmachines" and r.sku]
+    quota_summary: list[dict] = []
+    total_requested_cores = 0
+    families: dict[str, int] = {}
+    if vm_resources:
+        # Build map name->cores from vm sizes list
+        size_meta = {s["name"]: s for s in list_vm_sizes(plan.region, subscription_id)}
+        # Get SKU metadata for family extraction
+        sku_meta = list_compute_resource_skus(plan.region, subscription_id)
+        for r in vm_resources:
+            size = r.sku
+            cores = 0
+            if size in size_meta:
+                cores = size_meta[size].get("number_of_cores") or 0
+            fam = None
+            for s in sku_meta:
+                if s.get("resource_type", "").lower() == "virtualmachines" and (s.get("name") == size or s.get("size") == size):
+                    fam = s.get("family")
+                    break
+            req = cores * (r.quantity or 1)
+            total_requested_cores += req
+            if fam:
+                families[fam] = families.get(fam, 0) + req
+
+        # Filter usages to only those relevant to total cores or included families
+        for u in usages:
+            name = (u.get("name") or "").strip()
+            lname = name.lower()
+            cur = u.get("current_value") or 0
+            lim = u.get("limit")
+            if lim in (None, 0):
+                continue
+            include = False
+            # Match total regional vCPUs
+            if "total regional vcpus" in lname:
+                include = True
+                planned = total_requested_cores
+            else:
+                planned = 0
+                # Match family names by heuristic tokens (family code without \"Family\" suffix)
+                for fam, req in families.items():
+                    fam_token = (fam or "").lower().replace("family", "").strip()
+                    if fam_token and fam_token in lname:
+                        include = True
+                        planned = req
+                        break
+            if not include:
+                continue
+            remaining = lim - cur
+            pct = (cur / lim * 100.0) if lim else None
+            post_used_pct = ((cur + planned) / lim * 100.0) if lim else None
+            quota_summary.append({
+                "name": name,
+                "current": cur,
+                "limit": lim,
+                "remaining": remaining,
+                "percent_used": round(pct, 2) if pct is not None else None,
+                "requested_additional": planned,
+                "remaining_after_request": remaining - planned if remaining is not None else None,
+                "percent_used_after_request": round(post_used_pct, 2) if post_used_pct is not None else None
+            })
+    quota_status = 'present' if quota_summary else ('empty' if usages else 'unavailable')
+    return ValidationResponse(region=plan.region, subscription_id=subscription_id, results=results, zone_mapping=zone_mapping, zone_mapping_status=zone_mapping_status, quota_summary=quota_summary, quota_status=quota_status)

@@ -35,3 +35,6 @@ class ValidationResponse(BaseModel):
     subscription_id: Optional[str]
     results: List[ValidationResultItem]
     zone_mapping: Optional[List[dict]] = None  # list of {logicalZone, physicalZone}
+    zone_mapping_status: Optional[str] = None  # 'present' | 'unavailable' | 'error'
+    quota_summary: Optional[List[dict]] = None  # list of {name, current, limit, remaining, percent_used}
+    quota_status: Optional[str] = None  # 'present' | 'empty' | 'unavailable'
