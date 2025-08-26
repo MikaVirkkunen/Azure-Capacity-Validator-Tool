@@ -50,3 +50,6 @@ Open http://localhost:5173
 Not required for this MVP. If you want agent workflows next (as in the original vision), we can:
 - Wrap the Azure SDK calls as MCP tools
 - Add a Microsoft Learn MCP to fetch official docs and return canonical references alongside validations
+
+### AI Compatibility (httpx & openai)
+Some `openai` SDK releases pass a legacy `proxies` kwarg to `httpx.Client`. `httpx` 0.28+ removed that parameter. This app includes a small runtime shim that strips `proxies` if the installed httpx no longer supports it. To disable the shim set `OPENAI_HTTPX_DISABLE_SHIM=1`. If you prefer no shim, pin `httpx<0.28` (and a compatible `openai` version) or upgrade both once upstream removes the dependency.

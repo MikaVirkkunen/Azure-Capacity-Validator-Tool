@@ -26,7 +26,7 @@ export default function PlanEditor({ plan, setPlan, region, subscriptionId }: Pr
   const addResource = () => {
     const typeToUse = newType === 'custom' ? (customType || '').trim() : newType
     if (!typeToUse) return
-    const res: PlanResource = { resource_type: typeToUse, sku: newSku || undefined, quantity: 1, features: {} }
+  const res: PlanResource = { resource_type: typeToUse, sku: newSku || undefined, quantity: 1, features: {} }
     setPlan({ ...plan, resources: [...plan.resources, res] })
     setNewSku('')
     if (newType === 'custom') setCustomType('')
@@ -57,12 +57,16 @@ export default function PlanEditor({ plan, setPlan, region, subscriptionId }: Pr
             else if (v.toLowerCase() === 'microsoft.compute/virtualmachines') setNewSku('')
             else if (v.toLowerCase() === 'microsoft.compute/disks') setNewSku('Premium_LRS')
             else if (v.toLowerCase() === 'microsoft.cognitiveservices/accounts') setNewSku('S0')
+            else if (v.toLowerCase() === 'microsoft.storage/storageaccounts') setNewSku('Standard_LRS')
+            else if (v.toLowerCase() === 'microsoft.web/sites') setNewSku('S1')
             else setNewSku('')
           }}>
             <MenuItem value="Microsoft.Compute/virtualMachines">Microsoft.Compute/virtualMachines</MenuItem>
             <MenuItem value="Microsoft.Compute/disks">Microsoft.Compute/disks</MenuItem>
             <MenuItem value="Microsoft.KeyVault/vaults">Microsoft.KeyVault/vaults</MenuItem>
             <MenuItem value="Microsoft.CognitiveServices/accounts">Microsoft.CognitiveServices/accounts</MenuItem>
+            <MenuItem value="Microsoft.Storage/storageAccounts">Microsoft.Storage/storageAccounts</MenuItem>
+            <MenuItem value="Microsoft.Web/sites">Microsoft.Web/sites</MenuItem>
             <MenuItem value="custom">Custom (enter RP/type)</MenuItem>
           </Select>
         </FormControl>
@@ -80,7 +84,7 @@ export default function PlanEditor({ plan, setPlan, region, subscriptionId }: Pr
         {newType.toLowerCase() === 'microsoft.compute/virtualmachines' && (
           <VMSizeSelector region={region} subscriptionId={subscriptionId} value={newSku} onChange={setNewSku} />
         )}
-        {['microsoft.compute/disks','microsoft.keyvault/vaults','microsoft.cognitiveservices/accounts'].includes(newType.toLowerCase()) && (
+  {['microsoft.compute/disks','microsoft.keyvault/vaults','microsoft.cognitiveservices/accounts','microsoft.storage/storageaccounts','microsoft.web/sites'].includes(newType.toLowerCase()) && (
           <GenericSkuSelector resourceType={newType} region={region} subscriptionId={subscriptionId} value={newSku} onChange={setNewSku} />
         )}
         {newType === 'custom' && (
@@ -106,10 +110,10 @@ export default function PlanEditor({ plan, setPlan, region, subscriptionId }: Pr
               {r.resource_type.toLowerCase() === 'microsoft.compute/virtualmachines' && (
                 <VMSizeSelector region={region} subscriptionId={subscriptionId} value={r.sku} onChange={(v) => updateResource(idx, { sku: v })} />
               )}
-              {['microsoft.compute/disks','microsoft.keyvault/vaults','microsoft.cognitiveservices/accounts'].includes(r.resource_type.toLowerCase()) && (
+              {['microsoft.compute/disks','microsoft.keyvault/vaults','microsoft.cognitiveservices/accounts','microsoft.storage/storageaccounts','microsoft.web/sites'].includes(r.resource_type.toLowerCase()) && (
                 <GenericSkuSelector resourceType={r.resource_type} region={region} subscriptionId={subscriptionId} value={r.sku} onChange={(v) => updateResource(idx, { sku: v })} />
               )}
-              {!( ['microsoft.compute/virtualmachines','microsoft.compute/disks','microsoft.keyvault/vaults','microsoft.cognitiveservices/accounts'].includes(r.resource_type.toLowerCase())) && (
+              {!( ['microsoft.compute/virtualmachines','microsoft.compute/disks','microsoft.keyvault/vaults','microsoft.cognitiveservices/accounts','microsoft.storage/storageaccounts','microsoft.web/sites'].includes(r.resource_type.toLowerCase())) && (
                 <TextField value={r.sku || ''} onChange={(e) => updateResource(idx, { sku: e.target.value })} size="small" />
               )}
               <Typography variant="body2" sx={{ minWidth: 48 }}>Qty</Typography>

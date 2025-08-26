@@ -15,6 +15,9 @@ export default function App() {
   const [results, setResults] = useState<any>(null)
   const [aiPrompt, setAiPrompt] = useState<string>('')
   const [aiLoading, setAiLoading] = useState<boolean>(false)
+  const [aiPhase, setAiPhase] = useState<string>('')
+  const [validating, setValidating] = useState<boolean>(false)
+  const [validationPhase, setValidationPhase] = useState<string>('')
   const [aiError, setAiError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -22,39 +25,48 @@ export default function App() {
   }, [])
 
   const runValidation = async () => {
-    const payload = { ...plan, region, subscription_id: subscriptionId }
-    const res = await fetch('/api/validate-plan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-    const data = await res.json()
-    setResults(data)
+    setValidating(true)
+    setValidationPhase('Validating plan')
+    try {
+      const payload = { ...plan, region, subscription_id: subscriptionId }
+      const res = await fetch('/api/validate-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      const data = await res.json()
+      setValidationPhase('Processing results')
+      setResults(data)
+    } finally {
+      setValidationPhase('')
+      setValidating(false)
+    }
   }
 
   const runAI = async () => {
     setAiError(null)
     setAiLoading(true)
+    setAiPhase('Analyzing architecture prompt')
     try {
       const res = await fetch('/api/ai/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: aiPrompt })
       })
+      setAiPhase('Extracting resource providers & SKUs')
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         const detail = (data && (data.detail || data.message)) || `HTTP ${res.status}`
-        setAiError(`AI plan generation failed: ${detail}. Configure Azure OpenAI in backend env vars.`)
+        setAiError(`AI analysis failed: ${detail}. Configure Azure OpenAI in backend env vars.`)
         return
       }
-  // Normalize into editor format. Do not override the user's selected region.
-  // Keep the currently selected region and only adopt AI region if it is explicitly provided
-  // AND the current region is empty (not the case in this UI).
-  setPlan({ region, resources: data.resources || [] })
+      setAiPhase('Building draft plan')
+      setPlan({ region, resources: data.resources || [] })
+      setAiPhase('Completed')
     } catch (e: any) {
-      setAiError(e?.message || 'Unexpected error calling AI plan API')
+      setAiError(e?.message || 'Unexpected error calling AI analysis API')
     } finally {
-      setAiLoading(false)
+      setTimeout(() => { setAiPhase(''); setAiLoading(false) }, 600)
     }
   }
 
@@ -93,18 +105,23 @@ export default function App() {
         />
         <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
           <Button variant="contained" onClick={runAI} disabled={aiLoading}>
-            {aiLoading ? 'Generating…' : 'Generate Plan with Azure OpenAI'}
+            {aiLoading ? (aiPhase || 'Analyzing…') : 'Analyze Architecture with Azure OpenAI'}
           </Button>
         </Stack>
         {aiError && (
           <Alert severity="error" sx={{ mt: 1 }}>{aiError}</Alert>
+        )}
+        {aiLoading && aiPhase && !aiError && (
+          <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>{aiPhase}</Typography>
         )}
       </Paper>
 
       <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
         <PlanEditor plan={plan} setPlan={setPlan} region={region} subscriptionId={subscriptionId} />
         <Stack direction="row" sx={{ mt: 2 }}>
-          <Button variant="contained" onClick={runValidation}>Validate Plan</Button>
+          <Button variant="contained" onClick={runValidation} disabled={validating}>
+            {validating ? (validationPhase || 'Validating…') : 'Validate Plan'}
+          </Button>
         </Stack>
       </Paper>
 

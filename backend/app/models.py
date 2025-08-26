@@ -34,3 +34,4 @@ class ValidationResponse(BaseModel):
     region: str
     subscription_id: Optional[str]
     results: List[ValidationResultItem]
+    zone_mapping: Optional[List[dict]] = None  # list of {logicalZone, physicalZone}

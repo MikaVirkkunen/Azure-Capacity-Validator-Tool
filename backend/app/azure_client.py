@@ -7,6 +7,7 @@ from azure.mgmt.subscription import SubscriptionClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.cognitiveservices import CognitiveServicesManagementClient
+import httpx
 
 from .cache import ttl_cache
 
@@ -64,6 +65,46 @@ def list_locations(subscription_id: Optional[str] = None) -> List[Dict[str, Any]
         }
         for loc in result
     ]
+
+
+@ttl_cache(ttl_seconds=21600)  # 6h cache; zone mappings rarely change
+def list_locations_with_zone_mappings(subscription_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Call the management REST API to retrieve locations including availabilityZoneMappings (logical->physical).
+
+    Returns list of dicts each containing: name, displayName, availabilityZoneMappings (list or None)
+    """
+    sub_id = subscription_id or get_default_subscription_id()
+    if not sub_id:
+        return []
+    # Acquire token for ARM
+    cred = get_default_credential()
+    token = cred.get_token("https://management.azure.com/.default").token
+    url = f"https://management.azure.com/subscriptions/{sub_id}/locations?api-version=2022-12-01"
+    try:
+        with httpx.Client(timeout=30) as client:
+            resp = client.get(url, headers={"Authorization": f"Bearer {token}"})
+            resp.raise_for_status()
+            data = resp.json()
+            out: List[Dict[str, Any]] = []
+            for entry in data.get("value", []) or []:
+                out.append({
+                    "name": entry.get("name"),
+                    "displayName": entry.get("displayName"),
+                    "availabilityZoneMappings": entry.get("availabilityZoneMappings")
+                })
+            return out
+    except Exception:
+        return []
+
+
+@ttl_cache(ttl_seconds=21600)
+def get_zone_mappings_for_location(location: str, subscription_id: Optional[str] = None) -> Dict[str, Any]:
+    locs = list_locations_with_zone_mappings(subscription_id)
+    norm = location.lower()
+    for loc in locs:
+        if (loc.get("name") or "").lower() == norm:
+            return loc
+    return {}
 
 
 def get_compute_client(subscription_id: Optional[str] = None) -> ComputeManagementClient:
@@ -251,9 +292,12 @@ def list_compute_resource_skus(location: Optional[str] = None, subscription_id: 
     """List Microsoft.Compute resource SKUs (VMs, Disks, etc.), optionally filtering by location."""
     compute = get_compute_client(subscription_id)
     result = []
+    # Normalize incoming location for case-insensitive comparisons (Azure may return e.g. 'SwedenCentral')
+    norm_loc = location.lower() if location else None
     for sku in compute.resource_skus.list():
         locations = sku.locations or []
-        if location and (location not in locations):
+        if norm_loc and all((l or "").lower() != norm_loc for l in locations):
+            # Skip SKUs that do not include the requested location (case-insensitive)
             continue
 
         # restrictions may disable in the region
@@ -285,7 +329,8 @@ def list_compute_resource_skus(location: Optional[str] = None, subscription_id: 
         zones: List[str] = []
         zone_caps: List[Dict[str, Any]] = []
         for li in getattr(sku, "location_info", []) or []:
-            if getattr(li, "location", None) == location:
+            li_loc = getattr(li, "location", None)
+            if norm_loc and (li_loc or "").lower() == norm_loc:
                 # zones: ["1","2","3"]
                 zones = getattr(li, "zones", None) or []
                 # zoneDetails: each with capabilities

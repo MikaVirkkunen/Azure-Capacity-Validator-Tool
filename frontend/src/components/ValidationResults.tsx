@@ -26,6 +26,17 @@ export default function ValidationResults({ results }: Props) {
           )
         })}
       </Stack>
+      {Array.isArray(results.zone_mapping) && results.zone_mapping.length > 0 && (
+        <>
+          <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle1" gutterBottom>Zone Mapping (Logical ➜ Physical)</Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              {results.zone_mapping.map((m: any, i: number) => (
+                <Chip key={i} label={`${m.logicalZone} ➜ ${m.physicalZone}`} size="small" />
+              ))}
+            </Stack>
+        </>
+      )}
     </div>
   )
 }
