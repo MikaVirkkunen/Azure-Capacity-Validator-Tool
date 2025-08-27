@@ -24,14 +24,14 @@ Azure Resource access:
 
 Azure OpenAI:
 - Preferred: Azure AD via `DefaultAzureCredential` (no keys).
-- Fallback: API key if `AVATAR_AZURE_OPENAI_KEY` is set.
+- Fallback: API key if `AZURE_OPENAI_KEY` is set.
 
 Required env:
-- `AVATAR_AZURE_OPENAI_DEPLOYMENT` (e.g., gpt-4.1)
-- `AVATAR_AZURE_OPENAI_ENDPOINT` (e.g., https://<your-aoai>.openai.azure.com/)
+- `AZURE_OPENAI_DEPLOYMENT` (e.g., gpt-4.1)
+- `AZURE_OPENAI_ENDPOINT` (e.g., https://<your-aoai>.openai.azure.com/)
 
 Optional:
-- `AVATAR_AZURE_OPENAI_KEY` (only if you prefer key-based auth)
+- `AZURE_OPENAI_KEY` (only if you prefer key-based auth)
 - `AZURE_SUBSCRIPTION_ID` (to pin a default subscription)
 - `CORS_ALLOW_ORIGINS` (comma-separated, default "*")
 - `AZURE_OPENAI_API_VERSION` (default `2024-02-15-preview`)
@@ -51,10 +51,10 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # Set Azure OpenAI env
-export AVATAR_AZURE_OPENAI_DEPLOYMENT=gpt-4.1
-export AVATAR_AZURE_OPENAI_ENDPOINT=https://<your-aoai>.openai.azure.com/
+export AZURE_OPENAI_DEPLOYMENT=gpt-4.1
+export AZURE_OPENAI_ENDPOINT=https://<your-aoai>.openai.azure.com/
 # Optional key (AAD is preferred):
-# export AVATAR_AZURE_OPENAI_KEY=...
+# export AZURE_OPENAI_KEY=...
 
 # Optional default subscription:
 # export AZURE_SUBSCRIPTION_ID=...

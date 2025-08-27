@@ -1,6 +1,13 @@
 import os
 from typing import Dict, Any, List
 
+# Load environment variables early (if .env present) for local/non-dev audiences.
+try:  # pragma: no cover - trivial
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:  # pragma: no cover
+    pass
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -270,8 +277,10 @@ def api_ai_plan(payload: Dict[str, Any]):
     if not prompt:
         raise HTTPException(400, "prompt is required")
     # Quick presence check before invoking client (to avoid stack trace noise)
-    if not os.getenv("AVATAR_AZURE_OPENAI_ENDPOINT") or not os.getenv("AVATAR_AZURE_OPENAI_DEPLOYMENT"):
-        raise HTTPException(status_code=503, detail="Azure OpenAI not configured (set AVATAR_AZURE_OPENAI_ENDPOINT and AVATAR_AZURE_OPENAI_DEPLOYMENT).")
+    have_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    have_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+    if not have_endpoint or not have_deployment:
+        raise HTTPException(status_code=503, detail="Azure OpenAI not configured (set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT).")
     try:
         plan = generate_initial_plan(prompt)
         if "region" not in plan:

@@ -2,6 +2,13 @@ import json
 import os
 from typing import Dict, Any
 
+# Ensure .env values are available if present (kept lightweight for production where .env is absent)
+try:  # pragma: no cover
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:  # pragma: no cover
+    pass
+
 import inspect
 import logging
 
@@ -41,12 +48,12 @@ def _ensure_httpx_proxies_compat():  # pragma: no cover (simple monkeypatch)
 
 
 def _get_azure_openai_client() -> AzureOpenAI:
-    endpoint = os.getenv("AVATAR_AZURE_OPENAI_ENDPOINT")
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     if not endpoint:
-        raise RuntimeError("Azure OpenAI endpoint not set: AVATAR_AZURE_OPENAI_ENDPOINT")
+        raise RuntimeError("Azure OpenAI endpoint not set: AZURE_OPENAI_ENDPOINT")
     api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
 
-    key = os.getenv("AVATAR_AZURE_OPENAI_KEY")
+    key = os.getenv("AZURE_OPENAI_KEY")
     _ensure_httpx_proxies_compat()
 
     if key:
@@ -67,9 +74,9 @@ def _get_azure_openai_client() -> AzureOpenAI:
 
 def generate_initial_plan(prompt: str) -> Dict[str, Any]:
     """Generate a JSON plan using Azure OpenAI; always returns parsed JSON dict."""
-    deployment = os.getenv("AVATAR_AZURE_OPENAI_DEPLOYMENT")
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
     if not deployment:
-        raise RuntimeError("AVATAR_AZURE_OPENAI_DEPLOYMENT is not set.")
+        raise RuntimeError("AZURE_OPENAI_DEPLOYMENT is not set.")
 
     client = _get_azure_openai_client()
     system = (
