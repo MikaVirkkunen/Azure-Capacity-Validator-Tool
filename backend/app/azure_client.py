@@ -269,6 +269,169 @@ def is_resource_available(resource_type_fqn: str, location: Optional[str] = None
     return {"available": available, "reason": "", "provider": provider, "type": rt, "locations": locs}
 
 
+# --------------------------- Generic Provider SKU Listing ---------------------------
+@ttl_cache(ttl_seconds=3600)
+def list_provider_skus(
+    provider_namespace: str,
+    subscription_id: Optional[str] = None,
+    location: Optional[str] = None,
+    target_resource_type: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Attempt to list SKUs for a provider namespace via ARM REST API and (optionally) filter by region.
+
+    Returns list of dicts: { name, tier?, kind?, resource_type?, locations? }
+    If region filtering is requested and the SKU advertises no locations, it's kept (assumed global).
+    """
+    sub_id = subscription_id or get_default_subscription_id()
+    if not sub_id:
+        return []
+    api_versions = {
+        "Microsoft.Storage": "2023-01-01",
+        "Microsoft.Web": "2023-12-01",
+        "Microsoft.CognitiveServices": "2023-05-01",
+        "Microsoft.Network": "2023-09-01",
+        "Microsoft.KeyVault": "2023-07-01",
+    }
+    api_version = api_versions.get(provider_namespace, "2023-01-01")
+    cred = get_default_credential()
+    try:
+        token = cred.get_token("https://management.azure.com/.default").token
+    except Exception:
+        return []
+    url = f"https://management.azure.com/subscriptions/{sub_id}/providers/{provider_namespace}/skus?api-version={api_version}"
+
+    def _norm(s: str) -> str:
+        return ''.join(ch for ch in s.lower() if ch.isalnum())
+
+    want = _norm(location) if location else None
+    try:
+        with httpx.Client(timeout=30) as client:
+            resp = client.get(url, headers={"Authorization": f"Bearer {token}"})
+            if resp.status_code >= 400:
+                return []
+            data = resp.json()
+            items: List[Dict[str, Any]] = []
+            for v in (data.get("value") or []):
+                name = v.get("name") or v.get("skuName") or v.get("sku")
+                if not name:
+                    continue
+                rtype = v.get("resourceType") or v.get("resource_type")
+                tier = v.get("tier") or v.get("skuTier") or v.get("tierName")
+                kind = v.get("kind")
+                # Collect locations from either 'locations' or nested 'locationInfo'
+                locs_raw = set()
+                for loc in (v.get("locations") or []):
+                    if loc:
+                        locs_raw.add(str(loc))
+                for li in (v.get("locationInfo") or []):
+                    # locationInfo entries may have 'locations' (list) or 'location'
+                    if isinstance(li, dict):
+                        for k in ("locations", "location"):
+                            val = li.get(k)
+                            if isinstance(val, list):
+                                for xx in val:
+                                    if xx:
+                                        locs_raw.add(str(xx))
+                            elif isinstance(val, str):
+                                locs_raw.add(val)
+                # Region filter
+                if want and locs_raw:
+                    norm_set = {_norm(l) for l in locs_raw}
+                    if want not in norm_set:
+                        continue
+                # Target resource type filter: if caller specified a resource type, only include if SKU declares it.
+                if target_resource_type:
+                    if rtype is None:
+                        # Skip entries that don't declare resourceType to avoid huge unrelated lists.
+                        continue
+                    if rtype.lower() != target_resource_type.lower():
+                        continue
+                items.append({
+                    "name": name,
+                    "resource_type": rtype,
+                    "tier": tier,
+                    "kind": kind,
+                    "locations": sorted(locs_raw) if locs_raw else None,
+                })
+            # If we filtered everything out (e.g., provider doesn't enumerate at that granularity), return empty so caller can fallback.
+            return items
+    except Exception:
+        return []
+
+
+def list_specialized_skus(resource_type: str, location: str, subscription_id: Optional[str]) -> List[Dict[str, Any]]:
+    """Enumerate SKUs for resource types where generic provider /skus is insufficient.
+
+    Currently implemented:
+      - Microsoft.KeyVault/vaults: static tiers (Standard, Premium) both assumed regionally available if resource type itself is.
+      - Microsoft.CognitiveServices/accounts: check availability for F0 and S0 (OpenAI-like tiers) using check_sku_availability.
+    Returns list[ {name, details} ] or empty list if not handled.
+    """
+    rt_lower = resource_type.lower()
+    items: List[Dict[str, Any]] = []
+    try:
+        if rt_lower == "microsoft.keyvault/vaults":
+            # Key Vault tiers are globally offered; region restrictions come from resource type availability.
+            items = [
+                {"name": "standard", "details": "Key Vault Standard"},
+                {"name": "premium", "details": "Key Vault Premium"},
+            ]
+        elif rt_lower == "microsoft.cognitiveservices/accounts":
+            # Probe both F0 and S0 via availability API (kind OpenAI). If unavailable still include but add note.
+            statuses: Dict[str, str] = {}
+            try:
+                client = get_cognitiveservices_client(subscription_id)
+                kind = "OpenAI"
+                rtype = "Microsoft.CognitiveServices/accounts"
+                for sku_name in ["F0", "S0"]:
+                    try:
+                        availability = None
+                        if hasattr(client, "locations") and hasattr(client.locations, "check_sku_availability"):
+                            availability = client.locations.check_sku_availability(location, [sku_name], kind, rtype)
+                        if availability is None and hasattr(client, "accounts") and hasattr(client.accounts, "check_sku_availability"):
+                            params = {"kind": kind, "type": rtype, "skus": [sku_name]}
+                            availability = client.accounts.check_sku_availability(location, params)
+                        avail_flag = False
+                        for item in getattr(availability, "value", []) or []:
+                            if getattr(item, "sku_name", sku_name) == sku_name and getattr(item, "is_available", False):
+                                avail_flag = True
+                        statuses[sku_name] = "available" if avail_flag else "unavailable"
+                    except Exception:
+                        statuses[sku_name] = "unknown"
+            except Exception:
+                statuses = {"F0": "unknown", "S0": "unknown"}
+            items = [
+                {"name": sku, "details": status.capitalize() if status != "available" else "Standard" if sku=="S0" else "Free"}
+                for sku, status in statuses.items()
+            ]
+    except Exception:
+        return []
+    return items
+
+
+def is_sku_available_for_resource(resource_type: str, sku_name: str, location: str, subscription_id: Optional[str]) -> bool:
+    """Best-effort check whether a given SKU exists for the resource type in the region.
+
+    Falls back to True if provider enumeration not possible (to avoid false negatives).
+    """
+    if not sku_name:
+        return True
+    # Specialized first
+    spec = list_specialized_skus(resource_type, location, subscription_id)
+    if spec:
+        names = {i["name"].lower() for i in spec if i.get("name")}
+        return sku_name.lower() in names
+    # Generic provider list
+    try:
+        provider, _, typ = resource_type.partition('/')
+        skus = list_provider_skus(provider, subscription_id, location, typ)
+        if not skus:
+            return True  # Unknown enumeration ability -> optimistic
+        return any(sku_name.lower() == (s.get("name") or "").lower() for s in skus)
+    except Exception:
+        return True
+
+
 @ttl_cache(ttl_seconds=600)
 def list_vm_sizes(location: str, subscription_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """List VM sizes available in a region."""

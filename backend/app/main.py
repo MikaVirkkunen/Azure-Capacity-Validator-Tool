@@ -21,6 +21,9 @@ from .azure_client import (
     is_azure_openai_available,
     get_zone_mappings_for_location,
     get_compute_usages,
+    list_provider_skus,
+    list_specialized_skus,
+    is_sku_available_for_resource,
 )
 from .cache import clear_all_cache
 import re
@@ -193,7 +196,7 @@ def api_resource_skus(resource_type: str, location: str, subscription_id: str | 
 
     try:
         if rt_lower == "microsoft.compute/virtualmachines":
-            # Map VM sizes
+            # Map VM sizes dynamically (already dynamic)
             for s in list_vm_sizes(location, subscription_id):
                 mem_gb = s.get("memory_in_mb")
                 cores = s.get("number_of_cores")
@@ -204,7 +207,7 @@ def api_resource_skus(resource_type: str, location: str, subscription_id: str | 
                     details.append(f"{cores} vCPU")
                 items.append({"name": s["name"], "details": ", ".join(details)})
         elif rt_lower == "microsoft.compute/disks":
-            # Use compute resource SKUs for disks
+            # Use compute resource SKUs for disks (dynamic)
             skus = list_compute_resource_skus(location, subscription_id)
             seen = set()
             for sku in skus:
@@ -214,52 +217,63 @@ def api_resource_skus(resource_type: str, location: str, subscription_id: str | 
                         seen.add(name)
                         tier = sku.get("tier")
                         items.append({"name": name, "details": tier or ""})
-        elif rt_lower == "microsoft.keyvault/vaults":
-            items = [
-                {"name": "standard", "details": "Key Vault Standard"},
-                {"name": "premium", "details": "Key Vault Premium"},
-            ]
-        elif rt_lower == "microsoft.cognitiveservices/accounts":
-            # Minimal: expose S0 which is the common SKU for cognitive services like OpenAI
-            items = [
-                {"name": "F0", "details": "Free (quota limited)"},
-                {"name": "S0", "details": "Standard"}
-            ]
-        elif rt_lower == "microsoft.storage/storageaccounts":
-            items = [
-                {"name": "Standard_LRS", "details": "Standard Locally Redundant"},
-                {"name": "Standard_GRS", "details": "Standard Geo-Redundant"},
-                {"name": "Standard_RAGRS", "details": "Standard Read-Access GRS"},
-                {"name": "Standard_ZRS", "details": "Standard Zone-Redundant"},
-                {"name": "Standard_GZRS", "details": "Standard Geo-Zone Redundant"},
-                {"name": "Standard_RAGZRS", "details": "Standard Read-Access GZRS"},
-                {"name": "Premium_LRS", "details": "Premium (e.g. File Shares / Page Blobs)"},
-            ]
-        elif rt_lower == "microsoft.network/publicipaddresses":
-            items = [
-                {"name": "Basic", "details": "Basic SKU"},
-                {"name": "Standard", "details": "Standard SKU"},
-            ]
-        elif rt_lower == "microsoft.web/serverfarms":
-            # App Service Plans (curated common SKUs)
-            items = [
-                {"name": "F1", "details": "Free"},
-                {"name": "B1", "details": "Basic Small"},
-                {"name": "S1", "details": "Standard Small"},
-                {"name": "P1v3", "details": "Premium v3 P1"},
-                {"name": "I1v2", "details": "Isolated v2 I1"},
-            ]
-        elif rt_lower == "microsoft.web/sites":
-            # Sites map to an App Service Plan; expose same curated SKUs for convenience
-            items = [
-                {"name": "F1", "details": "Free"},
-                {"name": "B1", "details": "Basic Small"},
-                {"name": "S1", "details": "Standard Small"},
-                {"name": "P1v3", "details": "Premium v3 P1"},
-                {"name": "I1v2", "details": "Isolated v2 I1"},
-            ]
+        else:
+            # Generic dynamic path: fetch provider SKUs and filter by our specific resource_type leaf
+            provider, _, typ = resource_type.partition('/')
+            provider_skus = list_provider_skus(provider, subscription_id, location, typ)
+            for sku in provider_skus:
+                # If resource_type field exists and doesn't match our target type, skip
+                rtype = (sku.get("resource_type") or "").lower()
+                if rtype and rtype != typ.lower():
+                    continue
+                name = sku.get("name")
+                if not name:
+                    continue
+                details_parts: list[str] = []
+                tier = sku.get("tier")
+                kind = sku.get("kind")
+                if tier:
+                    details_parts.append(tier)
+                if kind and kind.lower() != tier.lower() if tier else True:
+                    details_parts.append(kind)
+                items.append({"name": name, "details": ", ".join(details_parts)})
+
+            # Fallback curated lists only if dynamic call returned nothing (preserve previous behavior)
+            if not items:
+                if rt_lower == "microsoft.keyvault/vaults":
+                    items = [
+                        {"name": "standard", "details": "Key Vault Standard"},
+                        {"name": "premium", "details": "Key Vault Premium"},
+                    ]
+                elif rt_lower == "microsoft.cognitiveservices/accounts":
+                    items = [
+                        {"name": "F0", "details": "Free"},
+                        {"name": "S0", "details": "Standard"}
+                    ]
+                elif rt_lower == "microsoft.storage/storageaccounts":
+                    items = [
+                        {"name": "Standard_LRS", "details": "Standard LRS"},
+                        {"name": "Standard_GRS", "details": "Standard GRS"},
+                        {"name": "Standard_RAGRS", "details": "Standard RA-GRS"},
+                        {"name": "Standard_ZRS", "details": "Standard ZRS"},
+                        {"name": "Standard_GZRS", "details": "Standard GZRS"},
+                        {"name": "Standard_RAGZRS", "details": "Standard RA-GZRS"},
+                        {"name": "Premium_LRS", "details": "Premium LRS"},
+                    ]
+                elif rt_lower == "microsoft.network/publicipaddresses":
+                    items = [
+                        {"name": "Basic", "details": "Basic"},
+                        {"name": "Standard", "details": "Standard"},
+                    ]
+                elif rt_lower == "microsoft.web/serverfarms" or rt_lower == "microsoft.web/sites":
+                    items = [
+                        {"name": "F1", "details": "Free"},
+                        {"name": "B1", "details": "Basic"},
+                        {"name": "S1", "details": "Standard"},
+                        {"name": "P1v3", "details": "Premium v3"},
+                        {"name": "I1v2", "details": "Isolated v2"},
+                    ]
     except Exception as e:
-        # On failure, return empty list with hint
         return {"items": [], "warning": f"SKU enumeration failed: {e}"}
 
     return {"items": items}
@@ -497,11 +511,16 @@ def api_validate_plan(plan: Plan):
         else:
             # Generic availability check via ARM Providers
             avail = is_resource_available(r.resource_type, plan.region, subscription_id)
-            if avail.get("available"):
-                results.append(ValidationResultItem(resource=r, status=ValidationStatus.AVAILABLE, details="Available (provider)."))
-            else:
+            if not avail.get("available"):
                 reason = avail.get("reason") or f"{r.resource_type} not available in {plan.region} for this subscription."
                 results.append(ValidationResultItem(resource=r, status=ValidationStatus.UNAVAILABLE, details=reason))
+                continue
+            # If SKU provided, attempt availability check
+            if r.sku:
+                if not is_sku_available_for_resource(r.resource_type, r.sku, plan.region, subscription_id):
+                    results.append(ValidationResultItem(resource=r, status=ValidationStatus.UNAVAILABLE, details=f"SKU {r.sku} not found for {r.resource_type} in {plan.region}."))
+                    continue
+            results.append(ValidationResultItem(resource=r, status=ValidationStatus.AVAILABLE, details="Available (provider)."))
     # Add region-level zone mapping summary (logical->physical) once
     mapping = get_zone_mappings_for_location(plan.region, subscription_id)
     az_maps_raw = mapping.get("availabilityZoneMappings") if mapping else None
