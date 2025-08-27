@@ -18,7 +18,12 @@ export default function VMSizeSelector({ region, subscriptionId, value, onChange
     if (subscriptionId) url.searchParams.set('subscription_id', subscriptionId)
     fetch(url.toString().replace(window.location.origin, ''))
       .then(r => r.json())
-      .then(setSizes)
+      .then((list) => {
+        setSizes(list)
+        if (!value && list && list.length > 0) {
+          onChange(list[0].name)
+        }
+      })
       .catch(console.error)
   }, [region, subscriptionId])
 

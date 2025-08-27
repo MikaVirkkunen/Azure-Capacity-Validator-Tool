@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import VMSizeSelector from './VMSizeSelector'
 import GenericSkuSelector from './GenericSkuSelector'
 import { Box, Stack, Typography, Select, MenuItem, TextField, Button, IconButton, Paper, InputLabel, FormControl } from '@mui/material'
@@ -19,17 +19,23 @@ type Props = {
 }
 
 export default function PlanEditor({ plan, setPlan, region, subscriptionId }: Props) {
-  const [newType, setNewType] = useState<string>('Microsoft.Compute/virtualMachines')
+  // New resource draft state
+  const [newType, setNewType] = useState<string>('')
   const [newSku, setNewSku] = useState<string>('')
   const [customType, setCustomType] = useState<string>('')
+
+  // Distinct resource types coming from AI-generated / current plan (used for dropdown options)
+  const planResourceTypes = useMemo(() => Array.from(new Set(plan.resources.map(r => r.resource_type))).sort(), [plan.resources])
 
   const addResource = () => {
     const typeToUse = newType === 'custom' ? (customType || '').trim() : newType
     if (!typeToUse) return
-  const res: PlanResource = { resource_type: typeToUse, sku: newSku || undefined, quantity: 1, features: {} }
+    const res: PlanResource = { resource_type: typeToUse, sku: newSku || undefined, quantity: 1, features: {} }
     setPlan({ ...plan, resources: [...plan.resources, res] })
+    // reset draft state
+    setNewType('')
     setNewSku('')
-    if (newType === 'custom') setCustomType('')
+    setCustomType('')
   }
 
   const updateResource = (idx: number, patch: Partial<PlanResource>) => {
@@ -48,25 +54,22 @@ export default function PlanEditor({ plan, setPlan, region, subscriptionId }: Pr
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" sx={{ mb: 2 }}>
         <FormControl sx={{ minWidth: 280 }}>
-          <InputLabel id="rtype-label">Resource Type</InputLabel>
-          <Select labelId="rtype-label" label="Resource Type" value={newType} onChange={(e) => {
-            const v = String(e.target.value)
-            setNewType(v)
-            // set sensible default SKUs
-            if (v.toLowerCase() === 'microsoft.keyvault/vaults') setNewSku('standard')
-            else if (v.toLowerCase() === 'microsoft.compute/virtualmachines') setNewSku('')
-            else if (v.toLowerCase() === 'microsoft.compute/disks') setNewSku('Premium_LRS')
-            else if (v.toLowerCase() === 'microsoft.cognitiveservices/accounts') setNewSku('S0')
-            else if (v.toLowerCase() === 'microsoft.storage/storageaccounts') setNewSku('Standard_LRS')
-            else if (v.toLowerCase() === 'microsoft.web/sites') setNewSku('S1')
-            else setNewSku('')
-          }}>
-            <MenuItem value="Microsoft.Compute/virtualMachines">Microsoft.Compute/virtualMachines</MenuItem>
-            <MenuItem value="Microsoft.Compute/disks">Microsoft.Compute/disks</MenuItem>
-            <MenuItem value="Microsoft.KeyVault/vaults">Microsoft.KeyVault/vaults</MenuItem>
-            <MenuItem value="Microsoft.CognitiveServices/accounts">Microsoft.CognitiveServices/accounts</MenuItem>
-            <MenuItem value="Microsoft.Storage/storageAccounts">Microsoft.Storage/storageAccounts</MenuItem>
-            <MenuItem value="Microsoft.Web/sites">Microsoft.Web/sites</MenuItem>
+          <InputLabel id="rtype-label" shrink>Resource Type</InputLabel>
+          <Select
+            labelId="rtype-label"
+            label="Resource Type"
+            value={newType}
+            onChange={(e) => { setNewType(String(e.target.value)); setNewSku('') }}
+            displayEmpty
+            renderValue={(val) => {
+              if (!val) return <em style={{ opacity: 0.6 }}>Select resource type</em>
+              return val
+            }}
+          >
+            <MenuItem value="" disabled><em>Select resource type</em></MenuItem>
+            {planResourceTypes.map(t => (
+              <MenuItem key={t} value={t}>{t}</MenuItem>
+            ))}
             <MenuItem value="custom">Custom (enter RP/type)</MenuItem>
           </Select>
         </FormControl>
@@ -76,23 +79,27 @@ export default function PlanEditor({ plan, setPlan, region, subscriptionId }: Pr
             sx={{ minWidth: 320 }}
             placeholder="e.g., Microsoft.Storage/storageAccounts"
             value={customType}
-            onChange={(e) => setCustomType(e.target.value)}
+            onChange={(e) => { setCustomType(e.target.value); setNewSku('') }}
             label="Custom Type"
           />
         )}
 
-        {newType.toLowerCase() === 'microsoft.compute/virtualmachines' && (
+        {newType && newType.toLowerCase() === 'microsoft.compute/virtualmachines' && (
           <VMSizeSelector region={region} subscriptionId={subscriptionId} value={newSku} onChange={setNewSku} />
         )}
-  {['microsoft.compute/disks','microsoft.keyvault/vaults','microsoft.cognitiveservices/accounts','microsoft.storage/storageaccounts','microsoft.web/sites'].includes(newType.toLowerCase()) && (
+        {newType && ['microsoft.compute/disks','microsoft.keyvault/vaults','microsoft.cognitiveservices/accounts','microsoft.storage/storageaccounts','microsoft.web/sites'].includes(newType.toLowerCase()) && (
           <GenericSkuSelector resourceType={newType} region={region} subscriptionId={subscriptionId} value={newSku} onChange={setNewSku} />
         )}
-        {newType === 'custom' && (
+        {newType === 'custom' && /.+\/.+/.test(customType.trim()) && (
+          <GenericSkuSelector resourceType={customType.trim()} region={region} subscriptionId={subscriptionId} value={newSku} onChange={setNewSku} label="SKU/Size" size='small' />
+        )}
+        {newType === 'custom' && (!/.+\/.+/.test(customType.trim())) && (
           <TextField
-            placeholder='Optional SKU'
+            placeholder='Enter valid RP/type before SKU'
             value={newSku}
             onChange={(e) => setNewSku(e.target.value)}
-            label="SKU/Size"
+            label="SKU/Size (optional)"
+            disabled
           />
         )}
 

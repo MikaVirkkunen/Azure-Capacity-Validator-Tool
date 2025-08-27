@@ -10,8 +10,9 @@ type Subscription = { subscription_id: string, display_name?: string }
 export default function App() {
   const [subs, setSubs] = useState<Subscription[]>([])
   const [subscriptionId, setSubscriptionId] = useState<string | undefined>(undefined)
-  const [region, setRegion] = useState<string>('westeurope')
-  const [plan, setPlan] = useState<any>({ region: 'westeurope', resources: [] })
+  // Default region changed to Sweden Central (swedencentral)
+  const [region, setRegion] = useState<string>('swedencentral')
+  const [plan, setPlan] = useState<any>({ region: 'swedencentral', resources: [] })
   const [results, setResults] = useState<any>(null)
   const [aiPrompt, setAiPrompt] = useState<string>('')
   const [aiLoading, setAiLoading] = useState<boolean>(false)

@@ -23,7 +23,14 @@ export default function GenericSkuSelector({ resourceType, region, subscriptionI
     if (subscriptionId) url.searchParams.set('subscription_id', subscriptionId)
     fetch(url.toString().replace(window.location.origin, ''))
       .then(r => r.json())
-      .then(data => setItems(data.items || []))
+      .then(data => {
+        const list = data.items || []
+        setItems(list)
+        // Auto-select first if none chosen
+        if (!value && list.length > 0) {
+          onChange(list[0].name)
+        }
+      })
       .catch(() => setItems([]))
   }, [resourceType, region, subscriptionId])
 
