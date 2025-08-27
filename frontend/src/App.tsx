@@ -10,7 +10,7 @@ type Subscription = { subscription_id: string, display_name?: string }
 export default function App() {
   const [subs, setSubs] = useState<Subscription[]>([])
   const [subscriptionId, setSubscriptionId] = useState<string | undefined>(undefined)
-  // Default region changed to Sweden Central (swedencentral)
+  // Default region set to Sweden Central by project preference
   const [region, setRegion] = useState<string>('swedencentral')
   const [plan, setPlan] = useState<any>({ region: 'swedencentral', resources: [] })
   const [results, setResults] = useState<any>(null)

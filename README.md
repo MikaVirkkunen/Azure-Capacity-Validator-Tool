@@ -16,9 +16,11 @@ Designed for Azure Infrastructure / Cloud Architects who want a quick, trustwort
 * Optional AI plan draft (Azure OpenAI deployment you already own)
 
 ## Architecture (Local Only)
-Backend: FastAPI + Azure SDK (runs on your machine, no data leaves except Azure API calls)
-Frontend: React/Vite UI
-Auth: DefaultAzureCredential (supports az login, Visual Studio / VS Code sign‑in, Managed Identity, or Service Principal env vars)
+Backend: FastAPI + Azure SDK (runs locally; only calls Microsoft Azure APIs)
+Frontend: React / Vite UI (single‑page app)
+Auth: DefaultAzureCredential (az login, VS Code sign‑in, Managed Identity, or Service Principal environment variables)
+
+No server components outside your workstation: safe to run from a consulting laptop / jump box. The tool never uploads your plan; validation is a read‑only metadata check plus quota usage queries.
 
 ## Setup (5–10 minutes)
 1. Prerequisites
@@ -32,7 +34,7 @@ Auth: DefaultAzureCredential (supports az login, Visual Studio / VS Code sign‑
 	* (Optional) Set `AZURE_SUBSCRIPTION_ID` to pin a default subscription
 3. Sign in to Azure
 	* Run `az login` (or use a Service Principal exported via `AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET` if needed)
-4. Install & run backend
+4. Install & run backend (local only; no external services started other than calling Azure)
 ```bash
 cd backend
 python -m venv .venv
@@ -48,9 +50,9 @@ npm run dev
 ```
 6. Open the UI: http://localhost:5173
 
-## Using the Tool
+## Using the Tool (Typical Flow ~2–3 minutes)
 1. Subscriptions: The dropdown auto-loads visible subscriptions (or uses the one you pinned)
-2. Region: Pick a region; VM sizes & SKU lists query live metadata
+2. Region: Default pre‑selected is Sweden Central (`swedencentral`). Pick any region; VM sizes & SKU lists query live metadata.
 3. Build Plan: Add resources (VMs, disks, etc.) and quantities
 4. (Optional) AI Draft: Enter a natural language prompt (e.g. "3 web VMs, premium disks, Key Vault, storage for logs") – edit the produced JSON
 5. Validate: Click validate; results show per-resource availability plus:
@@ -68,13 +70,20 @@ npm run dev
 | CORS_ALLOW_ORIGINS | Frontend origin(s) | No |
 | AZURE_OPENAI_API_VERSION | Override default API version | No |
 
-If AI vars are absent `/api/ai/plan` returns 503 so the UI can hide the feature.
+If AI vars are absent `/api/ai/plan` returns 503 so the UI can hide the feature. AI fallback region (when the prompt omits a region) is `westeurope`, but the UI default selection is `swedencentral`—adjust as needed.
 
 ## Security & Privacy
-* No secrets committed: `.env` is ignored, see `.env.example`
-* Uses your existing Azure identity—no extra credential store
-* All data remains local except Azure management/data plane calls
-* Optional API key for Azure OpenAI never logged
+* No credentials in repo: `.env` is ignored (see `.env.example` template)
+* Read‑only operations: queries subscriptions, regions, SKUs, quotas (does not create resources)
+* Uses your signed‑in Azure identity—no custom credential store
+* Azure OpenAI key (if used) is read from environment only and not logged
+* Fallback behaviour: if AI env vars absent the endpoint returns HTTP 503 and the UI hides AI features
+
+Public Readiness Checklist:
+* No hard‑coded subscription IDs, tenant IDs, keys, or secrets present
+* .gitignore excludes `.env` and virtual environments
+* Tests exercise validation logic (run `pytest`)
+* Minimal dependencies; all under permissive licenses (MIT / Apache) via Azure SDK & FastAPI
 
 ## Troubleshooting
 Issue: AI plan call fails mentioning `proxies`.
@@ -94,7 +103,7 @@ Fix: Region may not publish availability via SKU API or call failed; re-run late
 * Wrap logic as MCP tools for agent automation
 
 ## Contributing
-Pull requests welcome: test additions, new validators, UI usability improvements. Keep dependencies minimal.
+Pull requests welcome: additional validators (resource types / SKU nuances), test coverage, UX improvements. Please keep dependencies minimal and avoid introducing server‑side state.
 
 ## License
 MIT License. See `LICENSE` for full text.
